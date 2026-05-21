@@ -6,6 +6,7 @@ client.config.configureEditorPanel([
   { name: 'source', type: 'element' },
   { name: 'term', type: 'column', source: 'source', allowedTypes: ['text'], label: 'Term Column' },
   { name: 'count', type: 'column', source: 'source', allowedTypes: ['number', 'integer'], label: 'Count Column' },
+  { name: 'title', type: 'text', label: 'Title (optional)' },
 ]);
 
 const COLORS = [
@@ -92,11 +93,28 @@ export default function App() {
     );
   }
 
+  const title = config?.title;
+
   return (
-    <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
+    <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative', display: 'flex', flexDirection: 'column' }}>
+      {title && (
+        <div style={{
+          textAlign: 'center',
+          fontFamily: 'system-ui, sans-serif',
+          fontWeight: 700,
+          fontStyle: 'italic',
+          fontSize: '18px',
+          color: '#1e1b4b',
+          padding: '10px 0 4px',
+          flexShrink: 0,
+        }}>
+          {title}
+        </div>
+      )}
       <svg
         width="100%"
         height="100%"
+        style={{ flex: 1, minHeight: 0 }}
         viewBox={`0 0 ${CW} ${CH}`}
         preserveAspectRatio="xMidYMid meet"
         style={{ display: 'block' }}
