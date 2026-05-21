@@ -16,29 +16,18 @@ const COLORS = [
   '#A855F7', '#84CC16', '#FB923C', '#E879F9', '#34D399',
 ];
 
+// Fixed internal canvas — d3-cloud fills this, SVG scales it to the container
+const CW = 1400;
+const CH = 700;
+
 export default function App() {
   const config = useConfig();
   const sigmaData = useElementData(config?.source);
   const containerRef = useRef(null);
   const [words, setWords] = useState([]);
-  const [viewBox, setViewBox] = useState(null);
-  const [dims, setDims] = useState({ width: 800, height: 500 });
   const [tooltip, setTooltip] = useState(null);
   const lastFingerprintRef = useRef(null);
   const debounceRef = useRef(null);
-
-  useEffect(() => {
-    if (!containerRef.current) return;
-    const ro = new ResizeObserver(entries => {
-      for (const e of entries) {
-        const w = Math.floor(e.contentRect.width);
-        const h = Math.floor(e.contentRect.height);
-        if (w > 0 && h > 0) setDims({ width: w, height: h });
-      }
-    });
-    ro.observe(containerRef.current);
-    return () => ro.disconnect();
-  }, []);
 
   useEffect(() => {
     if (!sigmaData || !config?.term || !config?.count) return;
@@ -47,17 +36,16 @@ export default function App() {
     const counts = sigmaData[config.count] || [];
     if (terms.length === 0) return;
 
-    const fingerprint = terms.join('|') + '::' + counts.join('|') + '::' + dims.width + 'x' + dims.height;
+    const fingerprint = terms.join('|') + '::' + counts.join('|');
     if (fingerprint === lastFingerprintRef.current) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       lastFingerprintRef.current = fingerprint;
 
-      const MIN_FONT = 13;
-      const MAX_FONT = Math.min(Math.floor(dims.height / 4), 64);
+      const MIN_FONT = 16;
+      const MAX_FONT = 80;
 
-      // Sort by count, then assign font size by rank so distribution always looks good
       const sorted = terms
         .map((text, i) => ({ text: String(text), rawCount: Number(counts[i]) || 1 }))
         .filter(w => w.text && w.text.trim())
@@ -66,42 +54,23 @@ export default function App() {
       const n = sorted.length;
       const sized = sorted.map((w, rank) => ({
         ...w,
-        size: n === 1
-          ? MAX_FONT
-          : MAX_FONT - (rank / (n - 1)) * (MAX_FONT - MIN_FONT),
+        size: n === 1 ? MAX_FONT : MAX_FONT - (rank / (n - 1)) * (MAX_FONT - MIN_FONT),
       }));
 
       cloud()
-        .size([dims.width, dims.height])
+        .size([CW, CH])
         .words(sized)
         .padding(6)
         .rotate(() => (Math.random() > 0.85 ? 90 : 0))
         .font('system-ui, sans-serif')
-        .fontWeight(d => (d.size > (MAX_FONT * 0.55) ? '700' : '500'))
+        .fontWeight(d => (d.size > 48 ? '700' : '500'))
         .fontSize(d => d.size)
-        .on('end', placed => {
-          if (placed.length === 0) return;
-
-          const pad = 20;
-          let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-          placed.forEach(w => {
-            const isRotated = Math.abs(w.rotate) === 90;
-            const hw = (isRotated ? w.height : w.width)  / 2;
-            const hh = (isRotated ? w.width  : w.height) / 2;
-            minX = Math.min(minX, w.x - hw);
-            maxX = Math.max(maxX, w.x + hw);
-            minY = Math.min(minY, w.y - hh);
-            maxY = Math.max(maxY, w.y + hh);
-          });
-
-          setViewBox(`${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`);
-          setWords(placed);
-        })
+        .on('end', placed => setWords(placed))
         .start();
     }, 400);
 
     return () => clearTimeout(debounceRef.current);
-  }, [sigmaData, config, dims]);
+  }, [sigmaData, config]);
 
   if (!config?.source || !config?.term || !config?.count) {
     return (
@@ -124,41 +93,43 @@ export default function App() {
       <svg
         width="100%"
         height="100%"
-        viewBox={viewBox}
+        viewBox={`0 0 ${CW} ${CH}`}
         preserveAspectRatio="xMidYMid meet"
         style={{ display: 'block' }}
       >
-        {words.map((word, i) => (
-          <text
-            key={`${word.text}-${i}`}
-            textAnchor="middle"
-            transform={`translate(${word.x},${word.y}) rotate(${word.rotate})`}
-            style={{
-              fontSize: `${word.size}px`,
-              fontFamily: 'system-ui, sans-serif',
-              fontWeight: word.size > 35 ? 700 : 500,
-              fill: COLORS[i % COLORS.length],
-              opacity: 0.9,
-              cursor: 'pointer',
-              userSelect: 'none',
-            }}
-            onMouseEnter={e => {
-              e.target.style.opacity = 1;
-              const rect = containerRef.current.getBoundingClientRect();
-              setTooltip({ text: word.text, count: word.rawCount, x: e.clientX - rect.left, y: e.clientY - rect.top });
-            }}
-            onMouseMove={e => {
-              const rect = containerRef.current.getBoundingClientRect();
-              setTooltip(t => t ? { ...t, x: e.clientX - rect.left, y: e.clientY - rect.top } : t);
-            }}
-            onMouseLeave={e => {
-              e.target.style.opacity = 0.9;
-              setTooltip(null);
-            }}
-          >
-            {word.text}
-          </text>
-        ))}
+        <g transform={`translate(${CW / 2},${CH / 2})`}>
+          {words.map((word, i) => (
+            <text
+              key={`${word.text}-${i}`}
+              textAnchor="middle"
+              transform={`translate(${word.x},${word.y}) rotate(${word.rotate})`}
+              style={{
+                fontSize: `${word.size}px`,
+                fontFamily: 'system-ui, sans-serif',
+                fontWeight: word.size > 48 ? 700 : 500,
+                fill: COLORS[i % COLORS.length],
+                opacity: 0.9,
+                cursor: 'pointer',
+                userSelect: 'none',
+              }}
+              onMouseEnter={e => {
+                e.target.style.opacity = 1;
+                const rect = containerRef.current.getBoundingClientRect();
+                setTooltip({ text: word.text, count: word.rawCount, x: e.clientX - rect.left, y: e.clientY - rect.top });
+              }}
+              onMouseMove={e => {
+                const rect = containerRef.current.getBoundingClientRect();
+                setTooltip(t => t ? { ...t, x: e.clientX - rect.left, y: e.clientY - rect.top } : t);
+              }}
+              onMouseLeave={e => {
+                e.target.style.opacity = 0.9;
+                setTooltip(null);
+              }}
+            >
+              {word.text}
+            </text>
+          ))}
+        </g>
       </svg>
 
       {tooltip && (
