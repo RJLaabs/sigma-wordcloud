@@ -21,7 +21,7 @@ export default function App() {
   const sigmaData = useElementData(config?.source);
   const containerRef = useRef(null);
   const [words, setWords] = useState([]);
-  const [viewBox, setViewBox] = useState('0 0 800 500');
+  const [viewBox, setViewBox] = useState(null);
   const [dims, setDims] = useState({ width: 800, height: 500 });
   const [tooltip, setTooltip] = useState(null);
   const lastFingerprintRef = useRef(null);
@@ -54,52 +54,47 @@ export default function App() {
     debounceRef.current = setTimeout(() => {
       lastFingerprintRef.current = fingerprint;
 
-      const numCounts = counts.map(Number);
-      const maxCount = Math.max(...numCounts);
-      const minCount = Math.min(...numCounts);
-      const range = maxCount - minCount || 1;
+      const MIN_FONT = 13;
+      const MAX_FONT = Math.min(Math.floor(dims.height / 4), 64);
 
-      const MIN_FONT = 12;
-      const MAX_FONT = Math.min(Math.floor(dims.height / 3), 80);
-
-      const sized = terms
-        .map((text, i) => ({ text: String(text), rawCount: numCounts[i] || 1 }))
+      // Sort by count, then assign font size by rank so distribution always looks good
+      const sorted = terms
+        .map((text, i) => ({ text: String(text), rawCount: Number(counts[i]) || 1 }))
         .filter(w => w.text && w.text.trim())
-        .sort((a, b) => b.rawCount - a.rawCount)
-        .map(w => ({
-          ...w,
-          size: MIN_FONT + Math.sqrt((w.rawCount - minCount) / range) * (MAX_FONT - MIN_FONT),
-        }));
+        .sort((a, b) => b.rawCount - a.rawCount);
+
+      const n = sorted.length;
+      const sized = sorted.map((w, rank) => ({
+        ...w,
+        size: n === 1
+          ? MAX_FONT
+          : MAX_FONT - (rank / (n - 1)) * (MAX_FONT - MIN_FONT),
+      }));
 
       cloud()
         .size([dims.width, dims.height])
         .words(sized)
-        .padding(5)
+        .padding(6)
         .rotate(() => (Math.random() > 0.85 ? 90 : 0))
         .font('system-ui, sans-serif')
-        .fontWeight(d => (d.size > MAX_FONT * 0.5 ? '700' : '500'))
+        .fontWeight(d => (d.size > (MAX_FONT * 0.55) ? '700' : '500'))
         .fontSize(d => d.size)
         .on('end', placed => {
           if (placed.length === 0) return;
 
-          // Calculate actual bounding box of placed words
-          const pad = 16;
+          const pad = 20;
           let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
           placed.forEach(w => {
-            const hw = (w.width  || w.size * w.text.length * 0.6) / 2;
-            const hh = (w.height || w.size) / 2;
+            const isRotated = Math.abs(w.rotate) === 90;
+            const hw = (isRotated ? w.height : w.width)  / 2;
+            const hh = (isRotated ? w.width  : w.height) / 2;
             minX = Math.min(minX, w.x - hw);
             maxX = Math.max(maxX, w.x + hw);
             minY = Math.min(minY, w.y - hh);
             maxY = Math.max(maxY, w.y + hh);
           });
 
-          // ViewBox centered on actual content with padding
-          const vbX = minX - pad;
-          const vbY = minY - pad;
-          const vbW = (maxX - minX) + pad * 2;
-          const vbH = (maxY - minY) + pad * 2;
-          setViewBox(`${vbX} ${vbY} ${vbW} ${vbH}`);
+          setViewBox(`${minX - pad} ${minY - pad} ${maxX - minX + pad * 2} ${maxY - minY + pad * 2}`);
           setWords(placed);
         })
         .start();
@@ -141,7 +136,7 @@ export default function App() {
             style={{
               fontSize: `${word.size}px`,
               fontFamily: 'system-ui, sans-serif',
-              fontWeight: word.size > 40 ? 700 : 500,
+              fontWeight: word.size > 35 ? 700 : 500,
               fill: COLORS[i % COLORS.length],
               opacity: 0.9,
               cursor: 'pointer',
