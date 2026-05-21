@@ -60,7 +60,7 @@ export default function App() {
       // Use sqrt scaling for more dramatic size differences
       const MIN_FONT = 12;
       // Cap max font so the largest word can actually fit in the layout
-      const MAX_FONT = Math.min(Math.floor(dims.width / 8), Math.floor(dims.height / 5), 72);
+      const MAX_FONT = Math.min(Math.floor(dims.height / 3), 80);
       const layoutW = dims.width  - 60;
       const layoutH = dims.height - 60;
 
