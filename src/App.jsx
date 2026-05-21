@@ -21,12 +21,12 @@ export default function App() {
   const sigmaData = useElementData(config?.source);
   const containerRef = useRef(null);
   const [words, setWords] = useState([]);
+  const [viewBox, setViewBox] = useState('0 0 800 500');
   const [dims, setDims] = useState({ width: 800, height: 500 });
   const [tooltip, setTooltip] = useState(null);
   const lastFingerprintRef = useRef(null);
   const debounceRef = useRef(null);
 
-  // Measure container
   useEffect(() => {
     if (!containerRef.current) return;
     const ro = new ResizeObserver(entries => {
@@ -40,7 +40,6 @@ export default function App() {
     return () => ro.disconnect();
   }, []);
 
-  // Build layout
   useEffect(() => {
     if (!sigmaData || !config?.term || !config?.count) return;
 
@@ -81,6 +80,26 @@ export default function App() {
         .fontWeight(d => (d.size > MAX_FONT * 0.5 ? '700' : '500'))
         .fontSize(d => d.size)
         .on('end', placed => {
+          if (placed.length === 0) return;
+
+          // Calculate actual bounding box of placed words
+          const pad = 16;
+          let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+          placed.forEach(w => {
+            const hw = (w.width  || w.size * w.text.length * 0.6) / 2;
+            const hh = (w.height || w.size) / 2;
+            minX = Math.min(minX, w.x - hw);
+            maxX = Math.max(maxX, w.x + hw);
+            minY = Math.min(minY, w.y - hh);
+            maxY = Math.max(maxY, w.y + hh);
+          });
+
+          // ViewBox centered on actual content with padding
+          const vbX = minX - pad;
+          const vbY = minY - pad;
+          const vbW = (maxX - minX) + pad * 2;
+          const vbH = (maxY - minY) + pad * 2;
+          setViewBox(`${vbX} ${vbY} ${vbW} ${vbH}`);
           setWords(placed);
         })
         .start();
@@ -108,44 +127,43 @@ export default function App() {
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden', position: 'relative' }}>
       <svg
-        width={dims.width}
-        height={dims.height}
-        viewBox={`0 0 ${dims.width} ${dims.height}`}
-        style={{ display: 'block', overflow: 'hidden' }}
+        width="100%"
+        height="100%"
+        viewBox={viewBox}
+        preserveAspectRatio="xMidYMid meet"
+        style={{ display: 'block' }}
       >
-        <g transform={`translate(${dims.width / 2},${dims.height / 2})`}>
-          {words.map((word, i) => (
-            <text
-              key={`${word.text}-${i}`}
-              textAnchor="middle"
-              transform={`translate(${word.x},${word.y}) rotate(${word.rotate})`}
-              style={{
-                fontSize: `${word.size}px`,
-                fontFamily: 'system-ui, sans-serif',
-                fontWeight: word.size > 40 ? 700 : 500,
-                fill: COLORS[i % COLORS.length],
-                opacity: 0.9,
-                cursor: 'pointer',
-                userSelect: 'none',
-              }}
-              onMouseEnter={e => {
-                e.target.style.opacity = 1;
-                const rect = containerRef.current.getBoundingClientRect();
-                setTooltip({ text: word.text, count: word.rawCount, x: e.clientX - rect.left, y: e.clientY - rect.top });
-              }}
-              onMouseMove={e => {
-                const rect = containerRef.current.getBoundingClientRect();
-                setTooltip(t => t ? { ...t, x: e.clientX - rect.left, y: e.clientY - rect.top } : t);
-              }}
-              onMouseLeave={e => {
-                e.target.style.opacity = 0.9;
-                setTooltip(null);
-              }}
-            >
-              {word.text}
-            </text>
-          ))}
-        </g>
+        {words.map((word, i) => (
+          <text
+            key={`${word.text}-${i}`}
+            textAnchor="middle"
+            transform={`translate(${word.x},${word.y}) rotate(${word.rotate})`}
+            style={{
+              fontSize: `${word.size}px`,
+              fontFamily: 'system-ui, sans-serif',
+              fontWeight: word.size > 40 ? 700 : 500,
+              fill: COLORS[i % COLORS.length],
+              opacity: 0.9,
+              cursor: 'pointer',
+              userSelect: 'none',
+            }}
+            onMouseEnter={e => {
+              e.target.style.opacity = 1;
+              const rect = containerRef.current.getBoundingClientRect();
+              setTooltip({ text: word.text, count: word.rawCount, x: e.clientX - rect.left, y: e.clientY - rect.top });
+            }}
+            onMouseMove={e => {
+              const rect = containerRef.current.getBoundingClientRect();
+              setTooltip(t => t ? { ...t, x: e.clientX - rect.left, y: e.clientY - rect.top } : t);
+            }}
+            onMouseLeave={e => {
+              e.target.style.opacity = 0.9;
+              setTooltip(null);
+            }}
+          >
+            {word.text}
+          </text>
+        ))}
       </svg>
 
       {tooltip && (
