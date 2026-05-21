@@ -23,9 +23,11 @@ export default function App() {
   const [words, setWords] = useState([]);
   const [dims, setDims] = useState({ width: 800, height: 500 });
   const [tooltip, setTooltip] = useState(null);
+
+  // Track the last data fingerprint — only re-layout when data actually changes
+  const lastFingerprintRef = useRef(null);
   const debounceRef = useRef(null);
 
-  // Track container size
   useEffect(() => {
     if (!containerRef.current) return;
     const ro = new ResizeObserver(entries => {
@@ -37,24 +39,27 @@ export default function App() {
     return () => ro.disconnect();
   }, []);
 
-  // Debounced layout — only recalculates 500ms after data stops changing
   useEffect(() => {
     if (!sigmaData || !config?.term || !config?.count) return;
+
+    const terms  = sigmaData[config.term]  || [];
+    const counts = sigmaData[config.count] || [];
+    if (terms.length === 0) return;
+
+    // Build a fingerprint from the actual data — if it hasn't changed, don't re-layout
+    const fingerprint = terms.join('|') + '::' + counts.join('|') + '::' + dims.width + 'x' + dims.height;
+    if (fingerprint === lastFingerprintRef.current) return;
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     debounceRef.current = setTimeout(() => {
-      const terms  = sigmaData[config.term]  || [];
-      const counts = sigmaData[config.count] || [];
-      if (terms.length === 0) return;
+      lastFingerprintRef.current = fingerprint;
 
       const maxCount = Math.max(...counts.map(Number));
       const minCount = Math.min(...counts.map(Number));
       const range = maxCount - minCount || 1;
       const MIN_FONT = 11;
       const MAX_FONT = Math.min(Math.floor(dims.height / 4), 80);
-
-      // Shrink layout area slightly so words don't clip at edges
       const layoutW = dims.width  - 40;
       const layoutH = dims.height - 40;
 
@@ -73,7 +78,7 @@ export default function App() {
         .fontSize(d => d.size)
         .on('end', placed => setWords(placed))
         .start();
-    }, 500);
+    }, 400);
 
     return () => clearTimeout(debounceRef.current);
   }, [sigmaData, config, dims]);
@@ -96,11 +101,7 @@ export default function App() {
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden', background: 'transparent', position: 'relative' }}>
-      <svg
-        width={dims.width}
-        height={dims.height}
-        style={{ display: 'block', overflow: 'hidden' }}
-      >
+      <svg width={dims.width} height={dims.height} style={{ display: 'block', overflow: 'hidden' }}>
         <g transform={`translate(${dims.width / 2},${dims.height / 2})`}>
           {words.map((word, i) => (
             <text
@@ -115,7 +116,6 @@ export default function App() {
                 opacity: 0.9,
                 cursor: 'pointer',
                 userSelect: 'none',
-                transition: 'opacity 0.15s',
               }}
               onMouseEnter={e => {
                 e.target.style.opacity = 1;
