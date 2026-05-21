@@ -16,10 +16,6 @@ const COLORS = [
   '#A855F7', '#84CC16', '#FB923C', '#E879F9', '#34D399',
 ];
 
-function getColor(index) {
-  return COLORS[index % COLORS.length];
-}
-
 export default function App() {
   const config = useConfig();
   const sigmaData = useElementData(config?.source);
@@ -27,7 +23,9 @@ export default function App() {
   const [words, setWords] = useState([]);
   const [dims, setDims] = useState({ width: 800, height: 500 });
   const [tooltip, setTooltip] = useState(null);
+  const debounceRef = useRef(null);
 
+  // Track container size
   useEffect(() => {
     if (!containerRef.current) return;
     const ro = new ResizeObserver(entries => {
@@ -39,33 +37,45 @@ export default function App() {
     return () => ro.disconnect();
   }, []);
 
+  // Debounced layout — only recalculates 500ms after data stops changing
   useEffect(() => {
     if (!sigmaData || !config?.term || !config?.count) return;
-    const terms  = sigmaData[config.term]  || [];
-    const counts = sigmaData[config.count] || [];
-    if (terms.length === 0) return;
 
-    const maxCount = Math.max(...counts.map(Number));
-    const minCount = Math.min(...counts.map(Number));
-    const range = maxCount - minCount || 1;
-    const MIN_FONT = 11;
-    const MAX_FONT = Math.min(Math.floor(dims.height / 4), 90);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
 
-    const sized = terms
-      .map((text, i) => ({ text: String(text), rawCount: Number(counts[i]) || 1 }))
-      .filter(w => w.text && w.text.trim())
-      .map(w => ({ ...w, size: MIN_FONT + ((w.rawCount - minCount) / range) * (MAX_FONT - MIN_FONT) }));
+    debounceRef.current = setTimeout(() => {
+      const terms  = sigmaData[config.term]  || [];
+      const counts = sigmaData[config.count] || [];
+      if (terms.length === 0) return;
 
-    cloud()
-      .size([dims.width, dims.height])
-      .words(sized)
-      .padding(6)
-      .rotate(() => (Math.random() > 0.75 ? 90 : 0))
-      .font('DM Sans, system-ui, sans-serif')
-      .fontWeight(d => (d.size > MAX_FONT * 0.5 ? '700' : '500'))
-      .fontSize(d => d.size)
-      .on('end', placed => setWords(placed))
-      .start();
+      const maxCount = Math.max(...counts.map(Number));
+      const minCount = Math.min(...counts.map(Number));
+      const range = maxCount - minCount || 1;
+      const MIN_FONT = 11;
+      const MAX_FONT = Math.min(Math.floor(dims.height / 4), 80);
+
+      // Shrink layout area slightly so words don't clip at edges
+      const layoutW = dims.width  - 40;
+      const layoutH = dims.height - 40;
+
+      const sized = terms
+        .map((text, i) => ({ text: String(text), rawCount: Number(counts[i]) || 1 }))
+        .filter(w => w.text && w.text.trim())
+        .map(w => ({ ...w, size: MIN_FONT + ((w.rawCount - minCount) / range) * (MAX_FONT - MIN_FONT) }));
+
+      cloud()
+        .size([layoutW, layoutH])
+        .words(sized)
+        .padding(6)
+        .rotate(() => (Math.random() > 0.8 ? 90 : 0))
+        .font('DM Sans, system-ui, sans-serif')
+        .fontWeight(d => (d.size > MAX_FONT * 0.5 ? '700' : '500'))
+        .fontSize(d => d.size)
+        .on('end', placed => setWords(placed))
+        .start();
+    }, 500);
+
+    return () => clearTimeout(debounceRef.current);
   }, [sigmaData, config, dims]);
 
   if (!config?.source || !config?.term || !config?.count) {
@@ -86,7 +96,11 @@ export default function App() {
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden', background: 'transparent', position: 'relative' }}>
-      <svg width={dims.width} height={dims.height} style={{ display: 'block' }}>
+      <svg
+        width={dims.width}
+        height={dims.height}
+        style={{ display: 'block', overflow: 'hidden' }}
+      >
         <g transform={`translate(${dims.width / 2},${dims.height / 2})`}>
           {words.map((word, i) => (
             <text
@@ -96,8 +110,8 @@ export default function App() {
               style={{
                 fontSize: `${word.size}px`,
                 fontFamily: 'DM Sans, system-ui, sans-serif',
-                fontWeight: word.size > 45 ? 700 : 500,
-                fill: getColor(i),
+                fontWeight: word.size > 40 ? 700 : 500,
+                fill: COLORS[i % COLORS.length],
                 opacity: 0.9,
                 cursor: 'pointer',
                 userSelect: 'none',
@@ -106,9 +120,7 @@ export default function App() {
               onMouseEnter={e => {
                 e.target.style.opacity = 1;
                 const rect = containerRef.current.getBoundingClientRect();
-                const ex = e.clientX - rect.left;
-                const ey = e.clientY - rect.top;
-                setTooltip({ text: word.text, count: word.rawCount, x: ex, y: ey });
+                setTooltip({ text: word.text, count: word.rawCount, x: e.clientX - rect.left, y: e.clientY - rect.top });
               }}
               onMouseMove={e => {
                 const rect = containerRef.current.getBoundingClientRect();
