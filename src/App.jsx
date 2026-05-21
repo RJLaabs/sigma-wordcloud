@@ -81,13 +81,6 @@ export default function App() {
         .fontWeight(d => (d.size > MAX_FONT * 0.5 ? '700' : '500'))
         .fontSize(d => d.size)
         .on('end', placed => {
-          // Force top word to center
-          if (placed.length > 0) {
-            const top = placed.reduce((a, b) => a.rawCount > b.rawCount ? a : b);
-            top.x = 0;
-            top.y = 0;
-            top.rotate = 0;
-          }
           setWords(placed);
         })
         .start();
