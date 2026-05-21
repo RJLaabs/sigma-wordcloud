@@ -51,10 +51,14 @@ export default function App() {
         .filter(w => w.text && w.text.trim())
         .sort((a, b) => b.rawCount - a.rawCount);
 
-      const n = sorted.length;
-      const sized = sorted.map((w, rank) => ({
+      const rawVals = sorted.map(w => w.rawCount);
+      const logMax = Math.log1p(Math.max(...rawVals));
+      const logMin = Math.log1p(Math.min(...rawVals));
+      const logRange = logMax - logMin || 1;
+
+      const sized = sorted.map(w => ({
         ...w,
-        size: n === 1 ? MAX_FONT : MAX_FONT - (rank / (n - 1)) * (MAX_FONT - MIN_FONT),
+        size: MIN_FONT + ((Math.log1p(w.rawCount) - logMin) / logRange) * (MAX_FONT - MIN_FONT),
       }));
 
       cloud()
