@@ -23,8 +23,6 @@ export default function App() {
   const [words, setWords] = useState([]);
   const [dims, setDims] = useState({ width: 800, height: 500 });
   const [tooltip, setTooltip] = useState(null);
-
-  // Track the last data fingerprint — only re-layout when data actually changes
   const lastFingerprintRef = useRef(null);
   const debounceRef = useRef(null);
 
@@ -46,7 +44,6 @@ export default function App() {
     const counts = sigmaData[config.count] || [];
     if (terms.length === 0) return;
 
-    // Build a fingerprint from the actual data — if it hasn't changed, don't re-layout
     const fingerprint = terms.join('|') + '::' + counts.join('|') + '::' + dims.width + 'x' + dims.height;
     if (fingerprint === lastFingerprintRef.current) return;
 
@@ -55,28 +52,45 @@ export default function App() {
     debounceRef.current = setTimeout(() => {
       lastFingerprintRef.current = fingerprint;
 
-      const maxCount = Math.max(...counts.map(Number));
-      const minCount = Math.min(...counts.map(Number));
+      const numCounts = counts.map(Number);
+      const maxCount = Math.max(...numCounts);
+      const minCount = Math.min(...numCounts);
       const range = maxCount - minCount || 1;
-      const MIN_FONT = 11;
-      const MAX_FONT = Math.min(Math.floor(dims.height / 4), 80);
-      const layoutW = dims.width  - 40;
-      const layoutH = dims.height - 40;
+
+      // Use sqrt scaling for more dramatic size differences
+      const MIN_FONT = 12;
+      // Cap max font so the largest word can actually fit in the layout
+      const MAX_FONT = Math.min(Math.floor(dims.width / 8), Math.floor(dims.height / 5), 72);
+      const layoutW = dims.width  - 60;
+      const layoutH = dims.height - 60;
 
       const sized = terms
-        .map((text, i) => ({ text: String(text), rawCount: Number(counts[i]) || 1 }))
+        .map((text, i) => ({ text: String(text), rawCount: numCounts[i] || 1 }))
         .filter(w => w.text && w.text.trim())
-        .map(w => ({ ...w, size: MIN_FONT + ((w.rawCount - minCount) / range) * (MAX_FONT - MIN_FONT) }));
+        .sort((a, b) => b.rawCount - a.rawCount)
+        .map(w => {
+          const normalized = (w.rawCount - minCount) / range;
+          const scaled = Math.sqrt(normalized); // sqrt gives more dramatic spread
+          return { ...w, size: MIN_FONT + scaled * (MAX_FONT - MIN_FONT) };
+        });
 
       cloud()
         .size([layoutW, layoutH])
         .words(sized)
-        .padding(6)
-        .rotate(() => (Math.random() > 0.8 ? 90 : 0))
+        .padding(5)
+        .rotate(() => (Math.random() > 0.85 ? 90 : 0))
         .font('DM Sans, system-ui, sans-serif')
         .fontWeight(d => (d.size > MAX_FONT * 0.5 ? '700' : '500'))
         .fontSize(d => d.size)
-        .on('end', placed => setWords(placed))
+        .on('end', placed => {
+          if (placed.length > 0) {
+            const top = placed.reduce((a, b) => a.rawCount > b.rawCount ? a : b);
+            top.x = 0;
+            top.y = 0;
+            top.rotate = 0;
+          }
+          setWords(placed);
+        })
         .start();
     }, 400);
 
@@ -101,8 +115,13 @@ export default function App() {
 
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', overflow: 'hidden', background: 'transparent', position: 'relative' }}>
-      <svg width={dims.width} height={dims.height} style={{ display: 'block', overflow: 'hidden' }}>
-        <g transform={`translate(${dims.width / 2},${dims.height / 2})`}>
+      <svg width={dims.width} height={dims.height} style={{ display: 'block' }}>
+        <defs>
+          <clipPath id="cloud-clip">
+            <rect x="0" y="0" width={dims.width} height={dims.height} />
+          </clipPath>
+        </defs>
+        <g clipPath="url(#cloud-clip)" transform={`translate(${dims.width / 2},${dims.height / 2})`}>
           {words.map((word, i) => (
             <text
               key={`${word.text}-${i}`}
